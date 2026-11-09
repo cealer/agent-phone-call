@@ -3,7 +3,7 @@
   "revision": "a6eb4f68e4b056f1215157bb696209bc82a6db48",
   "reference": "reference.wav",
   "reference_text": "EXACT TRANSCRIPT OF reference.wav",
-  "language": "Spanish",
+  "language": "English",
   "seed": 42,
   "temperature": 0.7
 }

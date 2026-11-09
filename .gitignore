@@ -13,14 +13,14 @@ __pycache__/
 *.log
 
 # Flutter app / Android
-llamada/app/build/
-llamada/app/.dart_tool/
-llamada/app/.gradle/
-llamada/app/android/.gradle/
-llamada/app/android/local.properties
-llamada/app/.flutter-plugins-dependencies
-llamada/app/.idea/
-llamada/app/*.iml
+app/build/
+app/.dart_tool/
+app/.gradle/
+app/android/.gradle/
+app/android/local.properties
+app/.flutter-plugins-dependencies
+app/.idea/
+app/*.iml
 
 # Credentials and personal data: never in the repository
 **/google-services.json
@@ -33,4 +33,4 @@ voices/*/*.wav
 voices/*/voice.json
 
 # The voice-activity model does ship (2 MB, the server needs it)
-!llamada/server/models/
+!server/models/

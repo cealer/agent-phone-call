@@ -1,16 +1,16 @@
 #!/bin/bash
 # Mac side. Runs `fm-send` on the remote agent machine (VPS) over ssh, for the call server
-# (config.json contact "herdr_bin" / LLAMADA_FM_SEND). Install as ~/.local/bin/fm-send-vps (chmod +x) and
-# replace the placeholders. The key is restricted on the VPS to llamada-ssh-gate (see remote/README.md),
+# (config.json contact "herdr_bin" / PHONECALL_FM_SEND). Install as ~/.local/bin/fm-send-vps (chmod +x) and
+# replace the placeholders. The key is restricted on the VPS to phonecall-ssh-gate (see SETUP.md, step 11),
 # so it can run only herdr / fm-send. Arguments travel base64-encoded: accents and quotes stay intact.
 VPS_USER=YOUR_VPS_USER
 VPS_HOST=YOUR_VPS_TAILSCALE_NAME_OR_IP
 VPS_PORT=22
-KEY="$HOME/.ssh/id_ed25519_llamada"
+KEY="$HOME/.ssh/id_ed25519_phonecall"
 
 enc=""
 for a in "$@"; do enc="$enc$(printf %s "$a" | base64 | tr -d "\n"),"; done
 enc="${enc%,}"
-exec ssh -o BatchMode=yes -o ControlMaster=auto -o ControlPath="$HOME/.ssh/cm-llamada-%C" -o ControlPersist=600 \
+exec ssh -o BatchMode=yes -o ControlMaster=auto -o ControlPath="$HOME/.ssh/cm-phonecall-%C" -o ControlPersist=600 \
   -o ConnectTimeout=8 -o ServerAliveInterval=15 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
   -i "$KEY" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "fm-send64 $enc"

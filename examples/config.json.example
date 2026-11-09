@@ -4,7 +4,7 @@
   "phone_port": 8771,
   "local_port": 8770,
   "agent_host": "YOUR_MAC_TAILSCALE_IP",
-  "service_account": "~/.config/llamada/service-account.json",
+  "service_account": "~/.config/phonecall/service-account.json",
   "contacts": [
     {
       "id": "firstmate",
@@ -13,7 +13,7 @@
       "agent": "HERDR_AGENT_OR_PANE_ID_ON_THE_VPS",
       "inbox": "FM_SEND_TARGET_ON_THE_VPS",
       "herdr_bin": "~/.local/bin/herdr-vps",
-      "greeting": "¿Sí? Te escucho."
+      "greeting": "Yes? I'm listening."
     },
     {
       "id": "local",

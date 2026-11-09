@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_fleet">Agent Call · Fleet</string>
+    <string name="widget_fleet_desc">Claude, Codex and Grok quotas, and what is running, waiting and queued.</string>
+    <string name="widget_decisions">Agent Call · Decisions</string>
+    <string name="widget_decisions_desc">Decisions waiting for your answer: Yes, No or «Call me» without opening the app.</string>
+    <string name="widget_talk">Agent Call · Talk</string>
+    <string name="widget_talk_desc">Call your coordinator agent, dictate to it, talk to Hermes or leave a voice note.</string>
+</resources>

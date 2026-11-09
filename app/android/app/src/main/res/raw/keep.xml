@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- flutter_local_notifications looks the icon up by name (getIdentifier): without this the release resource shrinker removes it and main() fails before runApp. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@drawable/ic_notice" />
