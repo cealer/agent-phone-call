@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_flota">Llamada · Flota</string>
+    <string name="widget_flota_desc">Cuotas de Claude, Codex y Grok, y lo que hay en marcha, esperando y en cola.</string>
+    <string name="widget_decisiones">Llamada · Decisiones</string>
+    <string name="widget_decisiones_desc">Decisiones que esperan tu respuesta: Sí, No o «Llámame» sin abrir la app.</string>
+    <string name="widget_hablar">Llamada · Hablar</string>
+    <string name="widget_hablar_desc">Llamar al firstmate, dictarle, hablar con Hermes o dejar una nota por voz.</string>
+</resources>

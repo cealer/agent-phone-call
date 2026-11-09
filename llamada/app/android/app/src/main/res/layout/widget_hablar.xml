@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/raiz_hablar" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_fondo" android:gravity="center_vertical" android:orientation="horizontal"
+    android:padding="10dp">
+        <LinearLayout android:id="@+id/b_llamar" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+            <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/circulo_llamada">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center"
+                    android:src="@drawable/ic_telefono" />
+            </FrameLayout>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp"
+                android:fontFamily="sans-serif-condensed" android:letterSpacing="0.1" android:maxLines="1"
+                android:text="LLAMAR" android:textColor="#E8EEF3" android:textSize="10sp" android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/b_firstmate" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+            <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/circulo_firstmate">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center"
+                    android:src="@drawable/ic_mic" />
+            </FrameLayout>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp"
+                android:fontFamily="sans-serif-condensed" android:letterSpacing="0.1" android:maxLines="1"
+                android:text="FIRSTMATE" android:textColor="#E8EEF3" android:textSize="10sp" android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/b_hermes" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+            <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/circulo_hermes">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center"
+                    android:src="@drawable/ic_mic" />
+            </FrameLayout>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp"
+                android:fontFamily="sans-serif-condensed" android:letterSpacing="0.1" android:maxLines="1"
+                android:text="HERMES" android:textColor="#E8EEF3" android:textSize="10sp" android:textStyle="bold" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/b_nota" android:layout_width="0dp" android:layout_height="match_parent"
+            android:layout_weight="1" android:gravity="center" android:orientation="vertical">
+            <FrameLayout android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/circulo_nota">
+                <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="center"
+                    android:src="@drawable/ic_nota" />
+            </FrameLayout>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="5dp"
+                android:fontFamily="sans-serif-condensed" android:letterSpacing="0.1" android:maxLines="1"
+                android:text="NOTA" android:textColor="#E8EEF3" android:textSize="10sp" android:textStyle="bold" />
+        </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,25 @@
+{
+  "phone_token": "REPLACE_WITH_A_LONG_RANDOM_TOKEN (openssl rand -hex 32)",
+  "phone_host": "YOUR_MAC_TAILSCALE_IP",
+  "phone_port": 8771,
+  "local_port": 8770,
+  "agent_host": "YOUR_MAC_TAILSCALE_IP",
+  "service_account": "~/.config/llamada/service-account.json",
+  "contacts": [
+    {
+      "id": "firstmate",
+      "name": "Firstmate",
+      "subtitle": "Main coordinator (remote server)",
+      "agent": "HERDR_AGENT_OR_PANE_ID_ON_THE_VPS",
+      "inbox": "FM_SEND_TARGET_ON_THE_VPS",
+      "herdr_bin": "~/.local/bin/herdr-vps",
+      "greeting": "¿Sí? Te escucho."
+    },
+    {
+      "id": "local",
+      "name": "Claude Code",
+      "subtitle": "Agent on this Mac",
+      "agent": "HERDR_AGENT_OR_PANE_ID_ON_THIS_MAC"
+    }
+  ]
+}

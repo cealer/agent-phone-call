@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- flutter_local_notifications busca el icono por nombre (getIdentifier): sin esto el reductor de recursos de release lo borra y main() falla antes de runApp. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@drawable/ic_aviso" />

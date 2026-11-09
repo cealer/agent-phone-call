@@ -1,0 +1,36 @@
+# Environments, models and build output: heavy and reproducible
+.venv/
+**/.venv/
+models/
+.runtime/
+.claude/
+dist/
+*.tgz
+*.zip
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+
+# Flutter app / Android
+llamada/app/build/
+llamada/app/.dart_tool/
+llamada/app/.gradle/
+llamada/app/android/.gradle/
+llamada/app/android/local.properties
+llamada/app/.flutter-plugins-dependencies
+llamada/app/.idea/
+llamada/app/*.iml
+
+# Credentials and personal data: never in the repository
+**/google-services.json
+**/service-account*.json
+**/device.json
+**/config.json
+**/*token*
+!**/*token*.dart
+voices/*/*.wav
+voices/*/voice.json
+
+# The voice-activity model does ship (2 MB, the server needs it)
+!llamada/server/models/
