@@ -687,6 +687,17 @@ class LlamadaCommandTests(unittest.TestCase):
         self.assertEqual(sent, [("/say", {"text": "Sí, la doce ya está.", "sigue": True})])
         self.assertEqual(out, "")
 
+    def test_colgar_without_a_goodbye_sends_nothing(self):
+        with mock.patch("sys.stdin", mock.Mock(isatty=lambda: True)), \
+                mock.patch("sys.stderr", new_callable=lambda: __import__("io").StringIO()):
+            code, sent, out = self.run_command("colgar")
+        self.assertEqual((code, sent), (2, []))
+
+    def test_colgar_sends_the_goodbye(self):
+        code, sent, out = self.run_command("colgar", "Chao,", "Ana.", reply={"status": "terminada"})
+        self.assertEqual(sent, [("/end", {"text": "Chao, Ana."})])
+        self.assertEqual(code, 0)
+
     def test_plain_decir_is_unchanged(self):
         code, sent, out = self.run_command("decir", "Hola.", reply={"status": "ok", "text": "Hola, dime."})
         self.assertEqual(sent, [("/say", {"text": "Hola."})])
@@ -2084,10 +2095,8 @@ class WhisperFilterTests(unittest.TestCase):
             self.assertIn(word, engine.INITIAL_PROMPT)
 
 
-class HangUpReleasesTests(unittest.IsolatedAsyncioTestCase):
-    """However the call ends, the server lets go of its side: the phone's socket and its WebRTC connection are
-    closed and /status no longer says the phone is connected (an ended call with connected=true looked like a
-    phone still holding the call)."""
+class PhoneSocketCase(unittest.IsolatedAsyncioTestCase):
+    """A server on test ports and a phone that answers over the real socket and WebRTC (no voice engine)."""
 
     class Engine:
         def start(self): pass
@@ -2113,15 +2122,23 @@ class HangUpReleasesTests(unittest.IsolatedAsyncioTestCase):
         for runner in self.runners:
             await runner.cleanup()
 
-    async def answer(self, agent=None):
+    async def answer(self, agent=None, autoping=True, connect_audio=False):
         call = server.Call("hangup-test", self.server.engine, agent=agent)
         self.server.call = call
-        ws = await self.http.ws_connect("http://127.0.0.1:18789/ws?call_id=hangup-test&token=secret")
         self.phone_pc.addTrack(FakeMic())
         await self.phone_pc.setLocalDescription(await self.phone_pc.createOffer())
+        ws = await self.http.ws_connect("http://127.0.0.1:18789/ws?call_id=hangup-test&token=secret",
+                                        autoping=autoping)
         await ws.send_str(json.dumps({"type": "offer", "sdp": self.phone_pc.localDescription.sdp}))
-        answer = json.loads((await ws.receive()).data)
+        message = await ws.receive()
+        while message.type in {aiohttp.WSMsgType.PING, aiohttp.WSMsgType.PONG}:  # without autoping they come up
+            message = await ws.receive()
+        self.assertEqual(message.type, aiohttp.WSMsgType.TEXT)
+        answer = json.loads(message.data)
         self.assertEqual(answer["type"], "answer")
+        if connect_audio:  # the phone's microphone reaches the server, as in a real call
+            await self.phone_pc.setRemoteDescription(RTCSessionDescription(answer["sdp"], "answer"))
+            await asyncio.wait_for(call.audio_up.wait(), 10)
         return call, ws
 
     async def status(self):
@@ -2132,6 +2149,12 @@ class HangUpReleasesTests(unittest.IsolatedAsyncioTestCase):
         deadline = time.monotonic() + 5
         while call.pc.connectionState != "closed" and time.monotonic() < deadline:
             await asyncio.sleep(0.05)
+
+
+class HangUpReleasesTests(PhoneSocketCase):
+    """However the call ends, the server lets go of its side: the phone's socket and its WebRTC connection are
+    closed and /status no longer says the phone is connected (an ended call with connected=true looked like a
+    phone still holding the call)."""
 
     async def test_while_the_phone_is_on_the_call_it_is_connected(self):
         call, ws = await self.answer()
@@ -2156,13 +2179,157 @@ class HangUpReleasesTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_colgar_from_the_mac_tells_the_phone_and_closes_its_side(self):
         call, ws = await self.answer()
-        async with self.http.post("http://127.0.0.1:18788/end", json={}) as response:
+        call.speak = mock.AsyncMock(return_value=None)  # no voice engine here
+        async with self.http.post("http://127.0.0.1:18788/end", json={"text": "Hasta luego."}) as response:
             self.assertEqual((await response.json())["status"], "terminada")
         self.assertEqual(json.loads((await ws.receive()).data), {"type": "end"})
         self.assertIn((await ws.receive()).type, {aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED})
         self.assertEqual(await self.status(), {"id": "hangup-test", "connected": False, "ended": "terminada"})
         self.assertEqual(call.pc.connectionState, "closed")
 
+
+class HangUpReasonTests(PhoneSocketCase):
+    """Who ended the call is logged (a reason, never what was said), the agent is told the truth (only the
+    user's hang-up button means they hung up), and a call whose audio flows is not cut because the socket missed a pong
+    (real calls ended that way while the user was listening)."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.notices = []
+
+        async def prompt(agent, text):
+            self.notices.append((agent, text))
+
+        patcher = mock.patch.object(server.herdr_agent, "prompt", prompt)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def ended(self, call, notices=1):
+        await asyncio.wait_for(call.ended_event.wait(), 10)
+        await self.until_closed(call)
+        # The agent's notice goes once the server let go of its side; when none is expected, give it time to show.
+        deadline = time.monotonic() + (5 if notices else 1)
+        while len(self.notices) < max(notices, 1) and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+
+    def reasons(self, logs):
+        return [line.split("ended: ", 1)[1] for line in logs.output if "call hangup-test ended: " in line]
+
+    async def test_a_phone_that_never_answers_pings_keeps_a_call_whose_audio_flows(self):
+        # The old heartbeat (ping after 10 s, 5 s for the pong) cut this call at ~15 s.
+        call, ws = await self.answer(autoping=False, connect_audio=True)
+        await asyncio.sleep(17)
+        self.assertIsNone(call.ended)
+        self.assertFalse(ws.closed)
+        self.assertTrue(call.phone_connected())
+        await ws.close()
+
+    async def test_a_missing_pong_is_logged_as_such_and_the_agent_hears_the_line_dropped(self):
+        # Were a heartbeat ever set again, its missing pong must not read as a hang-up. Just the socket here: with
+        # a 1 s heartbeat the pong is due 0.5 s after the ping, sooner than an offer can be answered.
+        call = server.Call("hangup-test", self.server.engine, agent="pane")
+        self.server.call = call
+        with mock.patch.object(server, "PHONE_WS_HEARTBEAT", 1.0), self.assertLogs("llamada", "INFO") as logs:
+            ws = await self.http.ws_connect("http://127.0.0.1:18789/ws?call_id=hangup-test&token=secret",
+                                            autoping=False)
+            while (await ws.receive()).type not in {aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED}:
+                pass  # pings, never answered
+            await asyncio.wait_for(call.ended_event.wait(), 10)
+            deadline = time.monotonic() + 5
+            while not self.notices and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+        self.assertEqual(self.reasons(logs), ["colgó (no pong from the phone)"])
+        self.assertEqual(self.notices, [("pane", "[llamada] Se cortó la conexión con el teléfono.")])
+
+    async def test_the_hang_up_button_is_logged_and_the_agent_hears_he_hung_up(self):
+        with self.assertLogs("llamada", "INFO") as logs:
+            call, ws = await self.answer(agent="pane")
+            await ws.send_str(json.dumps({"type": "hangup"}))
+            await ws.receive()  # the server closes the socket
+            await self.ended(call)
+        self.assertEqual(self.reasons(logs), ["colgó (phone hung up (button))"])
+        self.assertEqual(self.notices, [("pane", f"[llamada] {server.NOMBRE} colgó la llamada.")])
+
+    async def test_the_phone_closing_its_socket_is_logged_and_the_agent_hears_the_line_dropped(self):
+        with self.assertLogs("llamada", "INFO") as logs:
+            call, ws = await self.answer(agent="pane")
+            await ws.close()
+            await self.ended(call)
+        self.assertEqual(self.reasons(logs), ["colgó (phone closed the socket (code 1000))"])
+        self.assertEqual(self.notices, [("pane", "[llamada] Se cortó la conexión con el teléfono.")])
+
+    async def test_the_agent_hanging_up_is_logged_and_not_told_back_as_his_hang_up(self):
+        with self.assertLogs("llamada", "INFO") as logs:
+            call, ws = await self.answer(agent="pane")
+            call.speak = mock.AsyncMock(return_value=None)
+            async with self.http.post("http://127.0.0.1:18788/end", json={"text": "Chao, Ana."}) as response:
+                self.assertEqual((await response.json())["status"], "terminada")
+            await self.ended(call, notices=0)
+        call.speak.assert_awaited_once_with("Chao, Ana.")
+        self.assertEqual(self.reasons(logs), ["terminada (agent hung up (with goodbye))"])
+        self.assertEqual(self.notices, [])
+        self.assertNotIn("Chao", "\n".join(logs.output))  # what is said never reaches the log
+
+    async def test_hanging_up_without_a_goodbye_is_refused_and_the_call_goes_on(self):
+        call, ws = await self.answer(agent="pane")
+        for body in ({}, {"text": "  "}):
+            async with self.http.post("http://127.0.0.1:18788/end", json=body) as response:
+                self.assertEqual(response.status, 400)
+                self.assertEqual((await response.json())["status"], "error")
+        self.assertIsNone(call.ended)
+        self.assertTrue(call.phone_connected())
+        await ws.close()
+
+    async def test_end_says_who_ended_the_call_when_the_phone_left_during_the_goodbye(self):
+        call, ws = await self.answer()
+
+        async def phone_leaves(text):
+            call.end("colgó", "phone hung up (button)")
+
+        call.speak = phone_leaves
+        async with self.http.post("http://127.0.0.1:18788/end", json={"text": "Adiós."}) as response:
+            self.assertEqual((await response.json())["status"], "colgó")
+
+
+class EndReasonTests(unittest.IsolatedAsyncioTestCase):
+    """The ways a call ends without the socket closing leave a line in the log too."""
+
+    def call(self):
+        return server.Call("reason", PhoneSocketCase.Engine())
+
+    async def test_a_failed_send_to_the_phone_is_logged(self):
+        call = self.call()
+        call.ws = mock.Mock(closed=False, send_str=mock.AsyncMock(side_effect=ConnectionResetError("reset")))
+        with self.assertLogs("llamada", "INFO") as logs:
+            await call.send({"type": "state", "value": "listening"})
+        self.assertEqual(logs.output, ["INFO:llamada:call reason ended: colgó (send to the phone failed "
+                                       "(ConnectionResetError))"])
+
+    async def test_the_phone_audio_stopping_is_logged(self):
+        from aiortc.mediastreams import MediaStreamError
+        track = mock.Mock(recv=mock.AsyncMock(side_effect=MediaStreamError()))
+        call = self.call()
+        with self.assertLogs("llamada", "INFO") as logs:
+            await call.consume(track)
+        self.assertEqual(logs.output, ["INFO:llamada:call reason ended: colgó (phone audio stopped)"])
+
+    async def test_only_the_first_reason_counts(self):
+        call = self.call()
+        with self.assertLogs("llamada", "INFO") as logs:
+            call.end("terminada", "idle timeout")
+            call.end("colgó", "phone closed the socket (code 1000)")
+        self.assertEqual(call.ended.detail, "idle timeout")
+        self.assertEqual(len(logs.output), 1)
+
+    async def test_an_idle_call_is_logged(self):
+        srv = server.Server({"phone_token": "secret"})
+        srv.engine = PhoneSocketCase.Engine()
+        call = self.call()
+        call.last_activity -= server.IDLE_HANGUP_SECONDS + 1
+        with mock.patch.object(server.asyncio, "sleep", mock.AsyncMock()), \
+                self.assertLogs("llamada", "INFO") as logs:
+            await srv._watch_idle(call)
+        self.assertEqual(logs.output, ["INFO:llamada:call reason ended: terminada (idle timeout)"])
 
 class BargeStatsTests(unittest.TestCase):
     def test_barge_start_reports_how_it_triggered(self):
@@ -2301,7 +2468,8 @@ class RealtimeCallTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         if self.server.call and not self.server.call.ended:
-            await self.post("/end", {"text": ""})
+            self.server.call.end("terminada", "end of test")
+            await self.server._finish(self.server.call)
         if self.phone.pc:
             await self.phone.pc.close()
         await self.http.close()
@@ -2774,7 +2942,7 @@ class HerdrAgentCallTests(RealtimeCallTests):
         self.assertEqual(listed[0]["status"], "unknown")
         status, dialed = await self.phone_post("/dial", {"contact": "coordinador"})
         self.assertEqual(status, 200, dialed)
-        await self.post("/end", {"text": ""})
+        self.server.call.end("terminada", "end of test")
 
     async def test_offline_agent_cannot_be_dialed(self):
         self.server.config["contacts"][0]["agent"] = "nadie"

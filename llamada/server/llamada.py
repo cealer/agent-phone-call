@@ -4,7 +4,7 @@
   llamada decir "texto"     say the text, print the next answer
   llamada decir --sigue "texto"   say a first piece now and go on working: returns at once, the next
                                   `decir` follows it with no gap (and Hermes gets them all together)
-  llamada colgar "texto"    say goodbye and hang up
+  llamada colgar "texto"    say goodbye and hang up (the goodbye is required)
   llamada estado            server and call status
 
 Text may also come on stdin ("-"). He can talk at any time, so besides his answer:
@@ -73,7 +73,7 @@ def main(argv: list[str]) -> int:
     text = " ".join(words[1:] if sigue else words).strip()
     if text in {"", "-"}:
         text = "" if command == "colgar" and sys.stdin.isatty() else sys.stdin.read().strip()
-    if not text and command != "colgar":
+    if not text:  # colgar too: a mute hang-up just cuts the user off
         print("Falta el texto.", file=sys.stderr)
         return 2
     path = {"iniciar": "/start", "decir": "/say", "colgar": "/end"}[command]

@@ -56,6 +56,10 @@ CONNECT_SECONDS = 20       # answered -> audio flowing
 ANSWER_WAIT_SECONDS = 60   # how long to wait for the user to start speaking
 CONTINUE_SECONDS = 1.0     # a pause shorter than this after an utterance joins the next one
 IDLE_HANGUP_SECONDS = 600  # Claude went quiet mid-call: hang up eventually
+# No heartbeat on the phone's call socket: a ping without its pong in time made aiohttp close the socket, and the
+# app hangs up when its socket closes, so a pause on the socket's route (e.g. a VPN) cut calls whose audio was
+# still flowing over WebRTC. A phone really gone is noticed by WebRTC (connection failed/closed, audio stopped).
+PHONE_WS_HEARTBEAT: float | None = None
 WARM_SECONDS = float(os.environ.get("LLAMADA_WARM_SECONDS", "600"))  # models stay loaded after a call / app open
 AGENT_JOIN_SECONDS = 1.0   # agent mode: silence after the last phrase before it all goes to the agent as one message
 JOIN_LONG_SECONDS = 2.0    # ... when his last phrase trails off ("y", "que", a comma): he is surely going on
@@ -585,7 +589,19 @@ INTRO = (f"[llamada] {NOMBRE} te llamó por teléfono y está en la línea. Lo q
          "Contéstale con: llamada decir \"…\" (breve y hablado, sin código). "
          "Si vas a tardar, di primero lo que ya tienes claro con un llamada decir corto y luego el resto con otro: "
          "suenan seguidos, sin hueco. "
-         "Para despedirte y colgar: llamada colgar \"…\".")
+         f"Cuelga solo si {NOMBRE} se despide (adiós, chao, hasta luego, cuelga) y siempre con una despedida: "
+         "llamada colgar \"…\". «Gracias» o «déjalo así» no cierran la llamada: pregúntale «¿Algo más?».")
+
+
+def socket_end_reason(ws: web.WebSocketResponse) -> str:
+    """Why the phone's call socket ended when no hang-up came over it, for the log (the phone's hang-up button
+    sends {type: hangup} first). A heartbeat without its pong ends with a TimeoutError and code 1006."""
+    exc = ws.exception()
+    if isinstance(exc, TimeoutError):
+        return "no pong from the phone"
+    if exc is not None:
+        return f"phone socket dropped ({type(exc).__name__}, code {ws.close_code})"
+    return f"phone closed the socket (code {ws.close_code})"
 
 
 class Call:
@@ -668,7 +684,9 @@ class Call:
         return bool(self.ws is not None and not self.ws.closed and not self.ended)
 
     def end(self, status: str, detail: str = "") -> None:
+        """Ends the call once; the first reason wins and is logged (a reason, never anything said)."""
         if not self.ended:
+            log.info("call %s ended: %s (%s)", self.id, status, detail or "no reason")
             self.ended = CallEnded(status, detail)
             self.ended_event.set()
             self.answered.set()
@@ -682,7 +700,7 @@ class Call:
         try:
             await self.ws.send_str(json.dumps(message, ensure_ascii=False))
         except (ConnectionError, RuntimeError) as exc:
-            self.end("colgó", f"connection lost: {exc}")
+            self.end("colgó", f"send to the phone failed ({type(exc).__name__})")
 
     def show_line(self, who: str, text: str) -> Callable[[], None]:
         """The call in text on the phone's screen: a line goes over the call's channel, nowhere else (no disk,
@@ -718,7 +736,7 @@ class Call:
                         self._record(pcm)
                     self._feed(pcm)
         except MediaStreamError:
-            self.end("colgó", "audio stopped")
+            self.end("colgó", "phone audio stopped")
 
     def _feed(self, pcm: bytes) -> None:
         self.detector.barge_mode = (self.out.playing and not self.out.paused
@@ -1430,11 +1448,12 @@ class Server:
         call = self.call
         if not call or call.id != request.query.get("call_id") or call.ws or call.ended:
             raise web.HTTPGone()
-        ws = web.WebSocketResponse(heartbeat=10)
+        ws = web.WebSocketResponse(heartbeat=PHONE_WS_HEARTBEAT)
         await ws.prepare(request)
         call.ws = ws
         call.answered.set()
         log.info("phone answered call %s", call.id)
+        hung_up = False
         try:
             async for message in ws:
                 if message.type != WSMsgType.TEXT:
@@ -1445,17 +1464,22 @@ class Server:
                 elif data["type"] == "route":
                     call.phone_route(data)
                 elif data["type"] == "hangup":
-                    call.end("colgó")
+                    hung_up = True
+                    call.end("colgó", "phone hung up (button)")
                     break
         finally:
-            call.end("colgó", "phone disconnected")
+            call.end("colgó", socket_end_reason(ws))
             log.info("phone left call %s", call.id)
             # Let go of this side whoever ended it: in turn mode with no turn running nobody else would close
             # the WebRTC connection, and the socket would stay open until the phone dropped it.
             await self._finish(call)
             if call.agent and call.ended.status == "colgó":
+                # Only the hang-up button says the user hung up; anything else is the line dropping, and the agent
+                # must not take the conversation as over nor blame the user for it.
+                notice = (f"[llamada] {NOMBRE} colgó la llamada." if hung_up
+                          else "[llamada] Se cortó la conexión con el teléfono.")
                 try:
-                    await herdr_agent.prompt(call.agent, f"[llamada] {NOMBRE} colgó la llamada.")
+                    await herdr_agent.prompt(call.agent, notice)
                 except herdr_agent.HerdrError:
                     pass
         return ws
@@ -1473,7 +1497,7 @@ class Server:
         async def on_state():
             log.info("webrtc %s", pc.connectionState)
             if pc.connectionState in {"failed", "closed"}:
-                call.end("colgó", f"webrtc {pc.connectionState}")
+                call.end("colgó", f"webrtc {pc.connectionState}")  # the phone's audio connection is gone
 
         await pc.setRemoteDescription(RTCSessionDescription(offer["sdp"], "offer"))
         pc.addTrack(call.out)
@@ -1570,19 +1594,23 @@ class Server:
                 return web.json_response({"status": "terminada", "text": "", "transcript": []})
             return web.json_response({"status": "sin_llamada"})
         text = (await request.json()).get("text", "").strip()
+        if not text:
+            # A mute hang-up leaves the user with a call that just stops: hanging up always says goodbye.
+            return web.json_response({"status": "error", "detail": "text required: say goodbye before hanging up"},
+                                     status=400)
         async with self.busy:
             pending = call.take_utterances()
             try:
                 if call.speech_chain:
                     await call.until(asyncio.wait({call.speech_chain}))
-                if text:
-                    await call.speak(text)
+                await call.speak(text)
                 await call.send({"type": "end"})
             except CallEnded:
                 pass
-            call.end("terminada")
+            call.end("terminada", "agent hung up (with goodbye)")
             await self._finish(call)
-        return web.json_response({"status": "terminada", "text": pending, "transcript": call.transcript})
+        # If the phone went away while the goodbye waited, say so: the agent did not hang up this call.
+        return web.json_response({"status": call.ended.status, "text": pending, "transcript": call.transcript})
 
     # ----- text conversation with the firstmate (from Hermes), local port only ----------------------
     async def texto_enviar(self, request: web.Request) -> web.Response:
@@ -1751,7 +1779,7 @@ class Server:
             await asyncio.sleep(15)
             if not self.busy.locked() and time.monotonic() - call.last_activity > IDLE_HANGUP_SECONDS:
                 await call.send({"type": "end"})
-                call.end("terminada", "idle")
+                call.end("terminada", "idle timeout")
                 await self._finish(call)
 
     async def _cancel_ring(self, fcm_token: str, call: Call) -> None:

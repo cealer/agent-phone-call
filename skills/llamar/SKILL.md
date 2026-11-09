@@ -30,7 +30,11 @@ The user is on the line, waiting to hear you. Messages look like:
 - `[llamada] USUARIO dijo: …`: what they just said.
 - `… [USUARIO te interrumpió mientras TÚ hablabas. YO dije (él alcanzó a oír): «…» · YO no alcancé a decir: «…»]`:
   they cut you off. Assume they only heard the first part; don't repeat it unless needed.
-- `[llamada] <Name> colgó la llamada.`: the call is over; don't use `llamada` again.
+- `[llamada] <Name> colgó la llamada.`: they pressed hang up; the call is over, don't use
+  `llamada` again.
+- `[llamada] Se cortó la conexión con el teléfono.`: the line dropped; **they did not hang up**
+  and the conversation was not finished. Keep its thread: they will likely call back, and then
+  pick up where it was cut. Don't call them back yourself unless something still blocks you on them.
 
 Answer **first, quickly**, with one shell call (no timeout needed, it returns at once):
 
@@ -42,8 +46,14 @@ Then do any work they asked for. If it takes more than a few seconds, first say 
 already know in a short `decir` and speak the rest in another `decir` when done. Consecutive
 `decir` play back to back with no gap (the next one is prepared while the previous still plays).
 They hear a soft "thinking" sound while you work. Don't write a long chat reply: they are not
-looking at the screen; the spoken text is the answer. Say goodbye and hang up with
-`llamada colgar "text"` when the conversation is done.
+looking at the screen; the spoken text is the answer.
+
+**Hanging up.** Only hang up when they say goodbye explicitly ("bye", "talk later", "hang up",
+or the same in their language), and always with a goodbye: `llamada colgar "text"` (never
+without text; the server refuses it). "Thanks", "leave it like that", "close it" or "call it
+done" are about the task, not the call: answer it and ask "Anything else?", then keep
+listening. When in doubt, ask; don't hang up. If they stay silent, the call ends by itself
+after a while.
 
 ## Calling the user
 
@@ -55,7 +65,8 @@ looking at the screen; the spoken text is the answer. Say goodbye and hang up wi
 3. `llamada iniciar "text"` with a **shell timeout of 10 minutes** (it rings up to 45 s).
    - Herdr mode: prints that they answered and heard you; their reply comes as a `[llamada]` prompt.
    - Turn mode: prints their answer; continue with `llamada decir "…"` (also blocking, also
-     10 minutes) and finish with `llamada colgar "…"`. To say a first piece and keep
+     10 minutes) and finish with `llamada colgar "…"` (same rule: only after their
+     goodbye, always with text). To say a first piece and keep
      working before the full answer, use `llamada decir --sigue "…"`: it returns at once
      without waiting, and your next `llamada decir` follows it with no gap (if they
      cut in meanwhile, that `decir` reports it with exit `6`).
@@ -81,7 +92,8 @@ your text was **not** said; read their words and decide again · `3` no answer o
 
 - `3` (no answer): don't call again right away. Continue with whatever does not need them,
   or wait at least 10 minutes before one more try. Never more than 3 attempts for the same thing.
-- `4` mid-call: treat what they already said as valid; don't call back unless it is still blocking.
+- `4` mid-call (they hung up or the line dropped): treat what they already said as valid; don't
+  call back unless it is still blocking.
 - `5`: ask once more ("¿Sigues ahí?"); if silent again, hang up and continue as with `3`.
 
 ## After the call
