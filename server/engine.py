@@ -33,7 +33,7 @@ REPO = Path(os.environ.get("PHONECALL_REPO", Path(__file__).resolve().parents[1]
 # The voice: model, reference clip and settings (see voices/README.md). PHONECALL_VOICE points to another voice.json.
 VOICE = Path(os.environ.get("PHONECALL_VOICE") or REPO / "voices" / "my-voice" / "voice.json")
 WHISPER = os.environ.get("PHONECALL_WHISPER", "mlx-community/whisper-large-v3-turbo")
-LANGUAGE = PACK["whisper"]  # the language the user speaks (PHONECALL_LANGUAGE, see language.py)
+LANGUAGE = PACK["whisper"]  # the language the user speaks (see language.py)
 FFMPEG = os.environ.get("FFMPEG") or shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 INITIAL_PROMPT = os.environ.get("PHONECALL_WHISPER_PROMPT") or PACK["whisper_prompt"]
 # Stock phrases Whisper invents on silence and noise (large-v3-turbo does it with no_speech = 0.0), in Spanish and English.

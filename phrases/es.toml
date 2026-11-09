@@ -1,0 +1,84 @@
+# What a call says and listens for in Spanish. One file per language: phrases/<code>.toml.
+# make_fillers.py records every short phrase below with your configured voice (see phrases/README.md);
+# the clips are generated on your Mac at install time and never kept in the repository.
+#
+# Table names are fixed (the server and Jev look them up); the clip names on the left are free
+# ([a-z0-9-], they become file names) and the phrases on the right are yours to change.
+
+name = "Spanish"
+whisper = "es"
+whisper_prompt = "Conversación telefónica en español entre una persona y su asistente de IA: firstmate, secondmate, llamada, Tailscale, Herdr, Claude."
+
+# Words a sentence does not end on: when a pause follows one, the user has more to say.
+trailing = ["y", "o", "e", "u", "ni", "pero", "sino", "que", "de", "del", "el", "la", "los", "las", "un",
+            "una", "en", "con", "para", "por", "porque", "si", "como", "entonces", "eh", "mmm", "este", "a",
+            "al", "aunque", "cuando", "donde", "mi", "tu", "su", "lo", "me", "te", "se", "sea", "es", "son",
+            "está", "estoy"]
+
+greeting = "¿Sí? Te escucho."
+agent_unreachable = "No pude pasarle tu mensaje al agente. Revisa herdr en la Mac."
+agent_offline = "El agente se desconectó. Cuelgo."
+hermes_preamble = """Esta conversación es por voz: responde en español, breve y natural, pensado para leerse en voz alta, sin markdown ni listas.
+
+"""
+
+[fillers]
+mmm-ya = "Mmm, ya."
+ok = "Ok."
+si-te-escucho = "Sí, te escucho."
+dime = "Dime."
+mmm-a-ver = "Mmm, a ver."
+
+[filler_categories.question]
+a-ver = "Mmm, a ver."
+dejame-ver = "Déjame ver."
+lo-reviso = "Lo reviso."
+
+[filler_categories.order]
+ok-dale = "Ok, dale."
+entendido = "Entendido."
+listo-voy = "Listo, voy."
+
+[filler_categories.greeting]
+hola-te-escucho = "Hola, te escucho."
+hola-aqui-estoy = "¡Hola! Aquí estoy."
+
+[filler_categories.goodbye]
+listo-chao = "Listo, chao."
+hasta-luego = "Dale, hasta luego."
+
+[filler_categories.thanks]
+de-nada = "De nada."
+con-gusto = "Con gusto."
+
+[filler_categories.other]
+mmm-ya = "Mmm, ya."
+entiendo = "Ok, entiendo."
+aja = "Ajá."
+
+[nods]
+aja = "Ajá."
+mm = "Mm."
+ya = "Ya."
+si = "Sí."
+
+[mm]
+mm = "Mm."
+aja = "Ajá."
+
+[wait.question]
+dejame-revisarlo = "Déjame revisarlo."
+lo-estoy-mirando = "Lo estoy mirando."
+
+[wait.order]
+lo-estoy-haciendo = "Lo estoy haciendo."
+dame-un-momento = "Dame un momento."
+
+[wait.other]
+un-momento = "Un momento."
+
+[wait.more]
+sigo-con-ello = "Sigo con ello."
+ya-casi = "Ya casi."
+un-poco-mas = "Un poco más."
+casi-listo = "Casi listo."

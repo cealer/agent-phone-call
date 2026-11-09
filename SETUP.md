@@ -38,11 +38,12 @@ Scope: the call server needs **macOS on Apple Silicon** (the default voice engin
 ## Where a human has to step in
 
 1. Log in to Tailscale on the Mac, the phone and the VPS (step 2).
-2. Provide a voice reference clip you have the right to use (step 4).
-3. Create the Firebase project and download two files from its console (step 5).
-4. Connect the phone by USB with USB debugging on, or copy the APK to it (step 8).
-5. Open the app on the phone and grant notifications, microphone and full-screen calls (step 9).
-6. Answer the test call, and call the agent from the app (step 12).
+2. Say which language they will speak on calls, if you do not know it (step 3; English by default).
+3. Provide a voice reference clip you have the right to use (step 4).
+4. Create the Firebase project and download two files from its console (step 5).
+5. Connect the phone by USB with USB debugging on, or copy the APK to it (step 8).
+6. Open the app on the phone and grant notifications, microphone and full-screen calls (step 9).
+7. Answer the test call, and call the agent from the app (step 12).
 
 ## 1. Requirements
 
@@ -98,7 +99,7 @@ below unless you know MagicDNS works on the phone.
 ```sh
 git clone https://github.com/OWNER/agent-phone-call ~/agent-phone-call   # skip if you are already in a clone
 cd ~/agent-phone-call
-sh install.sh
+sh install.sh --language en      # the language you speak on calls: en or es (see phrases/README.md)
 ```
 
 (`OWNER` is the GitHub account that hosts the repository; this guide assumes the clone lives at
@@ -106,8 +107,12 @@ sh install.sh
 
 `install.sh` installs `uv` and `ffmpeg` with Homebrew if missing, creates two Python 3.12 environments
 (`.venv` for the voice engine, `server/.venv` for the server), writes the `phonecall` command to
-`~/.local/bin/phonecall`, copies the skill to `~/.claude/skills/phonecall/`, and puts a starting
-`~/.config/phonecall/config.json` in place (mode 600).
+`~/.local/bin/phonecall`, copies the skill to `~/.claude/skills/phonecall/`, puts a starting
+`~/.config/phonecall/config.json` in place (mode 600), and saves the conversation language in
+`~/.config/phonecall/language`. **👤 Human:** ask which language the user will speak on calls if you do
+not know (`en` and `es` ship; another one means writing a phrase file first, see `phrases/README.md`).
+The short phrases in that language are recorded in step 4, once there is a voice: for now `install.sh`
+ends with "The voice is not set up yet".
 
 Make sure `~/.local/bin` is on `PATH` (add the line to `~/.zshrc` if not):
 
@@ -147,8 +152,8 @@ cp voices/my-voice/voice.json.example voices/my-voice/voice.json
 #   "language" = the clip's language for Qwen3-TTS ("English", "Spanish", ...)
 ```
 
-Pick the conversation language now: `en` (default) or `es` (see README, «Language»). If it is not English,
-export it for the commands below and set it again in step 7: `export PHONECALL_LANGUAGE=es`.
+Set `"language"` in `voice.json` to the conversation language chosen in step 3 (`"English"` for `en`,
+`"Spanish"` for `es`).
 
 Check: the engine loads, speaks and transcribes.
 
@@ -160,13 +165,19 @@ printf '{"id":1,"op":"tts","text":"Hello, this is a test of the voice.","out":"/
 afplay /tmp/phonecall-test.wav    # 👤 Human: the voice should sound like the clip
 ```
 
-Record the short acknowledgements played while the agent thinks, and turn on streamed speech:
+Record the short phrases played around the agent's answers (acknowledgements, nods, «still working»
+cues) with this voice, in the chosen language, and turn on streamed speech:
 
 ```sh
-cd ~/agent-phone-call/server && ../.venv/bin/python make_fillers.py && cd ..
+cd ~/agent-phone-call
+sh install.sh --fillers           # takes about a minute; uses ~/.config/phonecall/language
 touch ~/.config/phonecall/stream-tts
 ls ~/.config/phonecall/fillers    # you should see wav files and folders such as question/, wait/, nod/
+afplay ~/.config/phonecall/fillers/wait/question/*.wav   # 👤 Human: your voice, in your language
 ```
+
+A second `sh install.sh --fillers` should print `… 0 to record, 0 to delete`: only missing or changed
+phrases are recorded.
 
 ## 5. Firebase (what makes the phone ring)
 
@@ -240,8 +251,7 @@ sed -e "s#/PATH/TO/REPO#$PWD#g" -e "s#YOUR_HOME#$HOME#g" -e "s#YOUR_NAME#Alex#" 
   examples/phonecall.server.plist.example > ~/Library/LaunchAgents/phonecall.server.plist
 ```
 
-Replace `Alex` with the name the agent should call you, and set `PHONECALL_LANGUAGE` in the plist if you
-chose a language other than English. Then start it:
+Replace `Alex` with the name the agent should call you (the language comes from step 3). Then start it:
 
 ```sh
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/phonecall.server.plist
@@ -411,8 +421,9 @@ cd ~/agent-phone-call && git pull --ff-only && sh install.sh
 launchctl kickstart -k gui/$(id -u)/phonecall.server
 ```
 
-Rebuild and reinstall the app (step 8) when `app/` changed, and re-run `make_fillers.py --force` when the
-voice or the language changed.
+Rebuild and reinstall the app (step 8) when `app/` changed. `install.sh` records again any phrase that
+changed. After changing the voice, or to switch language, run `sh install.sh --fillers [--language CODE]`
+and restart the server.
 
 ## Troubleshooting
 

@@ -14,7 +14,7 @@ Settings (environment variables, read by the server process that launches this e
   PHONECALL_STT_MODEL    default whisper-1
   PHONECALL_TTS_MODEL    default tts-1
   PHONECALL_TTS_VOICE    default alloy
-  PHONECALL_LANGUAGE     the language the user speaks: en (default) or es (see language.py)
+  PHONECALL_LANGUAGE     the language the user speaks (default: install.sh's choice, else en; see language.py)
 
 A cloud API bills every request; with a local server nothing leaves the machine and nothing is billed.
 """
@@ -33,7 +33,10 @@ API_KEY = os.environ.get("PHONECALL_API_KEY", "")
 STT_MODEL = os.environ.get("PHONECALL_STT_MODEL", "whisper-1")
 TTS_MODEL = os.environ.get("PHONECALL_TTS_MODEL", "tts-1")
 TTS_VOICE = os.environ.get("PHONECALL_TTS_VOICE", "alloy")
-LANGUAGE = (os.environ.get("PHONECALL_LANGUAGE") or "en").strip().lower()
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from language import PACK  # noqa: E402
+
+LANGUAGE = PACK["whisper"]  # the language the user speaks (see language.py)
 FFMPEG = os.environ.get("FFMPEG") or shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 TIMEOUT = 60
 OUT_RATE = 48000

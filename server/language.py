@@ -1,102 +1,124 @@
-"""What the call says and listens for, in the language the user speaks.
+"""What the call says and listens for, in the language the user speaks: one phrases/<code>.toml per language.
 
-PHONECALL_LANGUAGE picks the pack: `en` (default) or `es`. The same setting tells Whisper which language to
-transcribe (engine.py, engine_openai.py), which words mean the user is not done talking (server.py), the default
-greeting, and the short recorded phrases make_fillers.py records. The agent prompts themselves are in English for
-every language: the agent is told which language to speak back.
+The language is PHONECALL_LANGUAGE, else the code in ~/.config/phonecall/language (install.sh --language writes
+it), else `en`. Its file is looked up first in ~/.config/phonecall/phrases/ (your own edits or a new language,
+kept across updates), then in the repository's phrases/ (en and es ship). The same setting tells Whisper which
+language to transcribe (engine.py, engine_openai.py), which words mean the user is not done talking (server.py),
+the default greeting, and the short phrases make_fillers.py records. The agent prompts themselves are in English
+for every language: the agent is told which language to speak back.
 
-To add a language, copy one pack, translate the phrases (keep each clip under the length noted next to it) and
-re-run make_fillers.py. The keys of `filler_categories` and `wait` are fixed: they are Jev's categories (jev.py).
+The table names are fixed. The categories of `filler_categories` and `wait` are Jev's (jev.py): Jev classifies
+what the user said into the same categories whatever the language, and the phrase file only says which clips
+answer each one. load() rejects a file whose categories differ, so a translation can never break Jev.
 """
 import os
+from pathlib import Path
+import re
+import sys
+import tomllib
 
-PACKS = {
-    "en": {
-        "name": "English",
-        "whisper": "en",
-        "whisper_prompt": ("A phone conversation between a person and their AI assistant: firstmate, secondmate, "
-                           "Tailscale, Herdr, Claude."),
-        # Words an English sentence does not end on: the user has more to say.
-        "trailing": {"and", "or", "but", "so", "because", "that", "which", "who", "the", "a", "an", "of", "to",
-                     "in", "on", "at", "for", "with", "from", "by", "about", "if", "when", "while", "um", "uh",
-                     "like", "my", "your", "our", "their", "is", "are", "was", "i", "we", "it's", "then", "also"},
-        "greeting": "Yes? I'm listening.",
-        "agent_unreachable": "I couldn't pass your message to the agent. Check Herdr on the Mac.",
-        "agent_offline": "The agent disconnected. Hanging up.",
-        "hermes_preamble": ("This conversation is by voice: answer in English, short and natural, meant to be "
-                            "read aloud, with no markdown and no lists.\n\n"),
-        # The recorded acknowledgements (make_fillers.py). fillers/: generic ones, <= 1.5 s each.
-        "fillers": {"mm-okay": "Mm, okay.", "ok": "Okay.", "listening": "Yes, I'm listening.", "go-on": "Go on.",
-                    "lets-see": "Mm, let's see."},
-        # fillers/<category>/: the one that fits the kind of phrase, with Jev on.
-        "filler_categories": {
-            "question": {"lets-see": "Mm, let's see.", "let-me-check": "Let me check.", "checking": "I'll look."},
-            "order": {"on-it": "Okay, on it.", "got-it": "Got it.", "doing-it": "Right, doing it."},
-            "greeting": {"hi-listening": "Hi, I'm listening.", "hi-here": "Hi! I'm here."},
-            "goodbye": {"bye": "Okay, bye.", "see-you": "Sure, see you."},
-            "thanks": {"welcome": "You're welcome.", "pleasure": "My pleasure."},
-            "other": {"mm-okay": "Mm, okay.", "i-see": "Okay, I see.", "uh-huh": "Uh-huh."},
-        },
-        # fillers/nod/: soft nods while the user talks on and on, <= 0.6 s each.
-        "nods": {"uh-huh": "Uh-huh.", "mm": "Mm.", "right": "Right.", "yes": "Yes."},
-        # fillers/mm/: with Jev on, the neutral clip played first, <= 0.5 s each.
-        "mm": {"mm": "Mm.", "uh-huh": "Uh-huh."},
-        # waiting/: the old layout of the waiting phrases, used only without fillers/wait/ ("first-*" go first).
-        "waiting": {"first-checking": "Checking, one moment please.", "first-one-moment": "One moment, I'll check.",
-                    "later-almost": "I almost have the answer.", "later-still": "Still checking, one more moment.",
-                    "later-a-bit": "A little more and I'll tell you.", "later-nearly": "Nearly there."},
-        # fillers/wait/<kind>/: «still working» phrases, <= 1.5 s each. The first one fits the kind of message
-        # (question / order / other), then up to 3 of "more", then only the soft chime.
-        "wait": {
-            "question": {"let-me-check": "Let me check that.", "looking": "I'm looking at it."},
-            "order": {"doing-it": "I'm on it.", "one-moment": "Give me a moment."},
-            "other": {"one-moment": "One moment."},
-            "more": {"still-on-it": "Still on it.", "almost": "Almost.", "a-bit-more": "A bit more.",
-                     "nearly-done": "Nearly done."},
-        },
-    },
-    "es": {
-        "name": "Spanish",
-        "whisper": "es",
-        "whisper_prompt": ("Conversación telefónica en español entre una persona y su asistente de IA: firstmate, "
-                           "secondmate, llamada, Tailscale, Herdr, Claude."),
-        # Words a Spanish sentence does not end on: the user has more to say.
-        "trailing": {"y", "o", "e", "u", "ni", "pero", "sino", "que", "de", "del", "el", "la", "los", "las", "un",
-                     "una", "en", "con", "para", "por", "porque", "si", "como", "entonces", "eh", "mmm", "este", "a",
-                     "al", "aunque", "cuando", "donde", "mi", "tu", "su", "lo", "me", "te", "se", "sea", "es", "son",
-                     "está", "estoy"},
-        "greeting": "¿Sí? Te escucho.",
-        "agent_unreachable": "No pude pasarle tu mensaje al agente. Revisa herdr en la Mac.",
-        "agent_offline": "El agente se desconectó. Cuelgo.",
-        "hermes_preamble": ("Esta conversación es por voz: responde en español, breve y natural, pensado para "
-                            "leerse en voz alta, sin markdown ni listas.\n\n"),
-        "fillers": {"mmm-ya": "Mmm, ya.", "ok": "Ok.", "si-te-escucho": "Sí, te escucho.", "dime": "Dime.",
-                    "mmm-a-ver": "Mmm, a ver."},
-        "filler_categories": {
-            "question": {"a-ver": "Mmm, a ver.", "dejame-ver": "Déjame ver.", "lo-reviso": "Lo reviso."},
-            "order": {"ok-dale": "Ok, dale.", "entendido": "Entendido.", "listo-voy": "Listo, voy."},
-            "greeting": {"hola-te-escucho": "Hola, te escucho.", "hola-aqui-estoy": "¡Hola! Aquí estoy."},
-            "goodbye": {"listo-chao": "Listo, chao.", "hasta-luego": "Dale, hasta luego."},
-            "thanks": {"de-nada": "De nada.", "con-gusto": "Con gusto."},
-            "other": {"mmm-ya": "Mmm, ya.", "entiendo": "Ok, entiendo.", "aja": "Ajá."},
-        },
-        "nods": {"aja": "Ajá.", "mm": "Mm.", "ya": "Ya.", "si": "Sí."},
-        "mm": {"mm": "Mm.", "aja": "Ajá."},
-        "waiting": {"first-revisando": "Revisando un momento, por favor.",
-                    "first-un-momento": "Un momento, lo reviso.",
-                    "later-ya-casi": "Ya casi tengo la respuesta.",
-                    "later-sigo": "Sigo revisando, un momento más.",
-                    "later-un-poco": "Un poquito más y te cuento.",
-                    "later-casi-listo": "Ya casi lo tengo."},
-        "wait": {
-            "question": {"dejame-revisarlo": "Déjame revisarlo.", "lo-estoy-mirando": "Lo estoy mirando."},
-            "order": {"lo-estoy-haciendo": "Lo estoy haciendo.", "dame-un-momento": "Dame un momento."},
-            "other": {"un-momento": "Un momento."},
-            "more": {"sigo-con-ello": "Sigo con ello.", "ya-casi": "Ya casi.", "un-poco-mas": "Un poco más.",
-                     "casi-listo": "Casi listo."},
-        },
-    },
-}
+REPO = Path(__file__).resolve().parents[1]
+CONFIG = Path(os.environ.get("PHONECALL_CONFIG", Path.home() / ".config" / "phonecall"))
+DEFAULT = "en"
 
-LANGUAGE = (os.environ.get("PHONECALL_LANGUAGE") or "en").strip().lower()
-PACK = PACKS.get(LANGUAGE) or PACKS["en"]
+# Jev's filler categories (jev.FILLER_CATEGORIES, checked by the tests) and the kinds of waiting phrases.
+FILLER_CATEGORIES = ("question", "order", "greeting", "goodbye", "thanks", "other")
+WAIT_KINDS = ("question", "order", "other", "more")
+TEXTS = ("name", "whisper", "whisper_prompt", "greeting", "agent_unreachable", "agent_offline", "hermes_preamble")
+CLIP_GROUPS = ("fillers", "nods", "mm")
+CLIP_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+class PhrasesError(ValueError):
+    pass
+
+
+def configured_code() -> str:
+    code = os.environ.get("PHONECALL_LANGUAGE", "").strip()
+    if not code:
+        try:
+            code = (CONFIG / "language").read_text(encoding="utf-8").strip()
+        except OSError:
+            code = ""
+    return (code or DEFAULT).lower()
+
+
+def phrases_file(code: str) -> Path | None:
+    if not re.fullmatch(r"[a-z]{2,3}(-[a-z0-9]+)?", code):
+        return None
+    for folder in (CONFIG / "phrases", REPO / "phrases"):
+        if (folder / f"{code}.toml").is_file():
+            return folder / f"{code}.toml"
+    return None
+
+
+def available() -> list[str]:
+    """The language codes there is a phrase file for."""
+    return sorted({p.stem for folder in (REPO / "phrases", CONFIG / "phrases") for p in folder.glob("*.toml")})
+
+
+def _clips(where: str, table) -> dict[str, str]:
+    if not isinstance(table, dict) or not table:
+        raise PhrasesError(f"{where}: needs at least one clip")
+    for name, text in table.items():
+        if not CLIP_NAME.match(name):
+            raise PhrasesError(f"{where}.{name}: clip names are lowercase letters, digits and dashes")
+        if not isinstance(text, str) or not text.strip():
+            raise PhrasesError(f"{where}.{name}: needs a phrase")
+    return dict(table)
+
+
+def _categories(where: str, table, expected: tuple[str, ...]) -> dict[str, dict[str, str]]:
+    if not isinstance(table, dict) or set(table) != set(expected):
+        found = sorted(table) if isinstance(table, dict) else []
+        raise PhrasesError(f"{where}: needs exactly the tables {', '.join(expected)} (found {', '.join(found)})")
+    return {kind: _clips(f"{where}.{kind}", table[kind]) for kind in expected}
+
+
+def parse(data: dict, where: str = "phrases") -> dict:
+    """A phrase file's contents, checked: every piece the server needs, Jev's categories, safe clip names."""
+    pack = {}
+    for key in TEXTS:
+        if not isinstance(data.get(key), str) or not data[key].strip():
+            raise PhrasesError(f"{where}: needs `{key}`")
+        pack[key] = data[key]
+    trailing = data.get("trailing")
+    if not isinstance(trailing, list) or not all(isinstance(w, str) and w for w in trailing):
+        raise PhrasesError(f"{where}: `trailing` is a list of words")
+    pack["trailing"] = {w.lower() for w in trailing}
+    for group in CLIP_GROUPS:
+        pack[group] = _clips(f"{where}: [{group}]", data.get(group))
+    pack["filler_categories"] = _categories(f"{where}: [filler_categories]", data.get("filler_categories"),
+                                            FILLER_CATEGORIES)
+    pack["wait"] = _categories(f"{where}: [wait]", data.get("wait"), WAIT_KINDS)
+    unknown = set(data) - set(TEXTS) - {"trailing", "filler_categories", "wait", *CLIP_GROUPS}
+    if unknown:
+        raise PhrasesError(f"{where}: unknown keys {', '.join(sorted(unknown))}")
+    return pack
+
+
+def load(code: str) -> dict:
+    path = phrases_file(code)
+    if path is None:
+        raise PhrasesError(f"no phrases/{code}.toml (available: {', '.join(available())})")
+    with path.open("rb") as f:
+        try:
+            data = tomllib.load(f)
+        except tomllib.TOMLDecodeError as exc:
+            raise PhrasesError(f"{path}: {exc}") from exc
+    return parse(data, str(path))
+
+
+def _startup() -> tuple[str, dict]:
+    code = configured_code()
+    try:
+        return code, load(code)
+    except PhrasesError as exc:
+        if code == DEFAULT:
+            raise
+        # The server keeps working in English rather than not starting; make_fillers.py fails instead.
+        print(f"language {code!r}: {exc}; using {DEFAULT}", file=sys.stderr)
+        return DEFAULT, load(DEFAULT)
+
+
+LANGUAGE, PACK = _startup()

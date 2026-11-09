@@ -23,4 +23,4 @@ No reference clip ships with this repository, and `.gitignore` keeps `voices/*/*
 `voices/*/voice.json` out of git so a recording is not published by accident.
 
 `seed` and `temperature` keep the voice consistent between phrases; once you like how it sounds,
-re-run `server/make_fillers.py` so the recorded acknowledgements use the same voice.
+run `sh install.sh --fillers` so the recorded short phrases use the same voice.

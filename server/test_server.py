@@ -6,11 +6,14 @@ Run (from server/, macOS with ffmpeg): .venv/bin/python -m unittest -v
 """
 import asyncio
 import fractions
+import importlib
+import io
 import json
 import os
 from pathlib import Path
 import random
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -1191,6 +1194,91 @@ class FillerRecordingTests(unittest.TestCase):
             self.assertGreaterEqual(len(texts), 2)
 
 
+FAKE_RECORDING_ENGINE = """
+import json, sys
+import numpy as np, soundfile
+print(json.dumps({"ok": True, "ready": True}), flush=True)
+for line in sys.stdin:
+    request = json.loads(line)
+    with open(sys.argv[1], "a") as said:
+        said.write(request["text"] + "\\n")
+    t = np.arange(4800) / 48000
+    soundfile.write(request["out"], (8000 * np.sin(2 * np.pi * 220 * t)).astype(np.int16), 48000, subtype="PCM_16")
+    print(json.dumps({"ok": True, "out": request["out"], "id": request["id"]}), flush=True)
+"""
+
+
+class MakeFillersTests(unittest.TestCase):
+    """make_fillers.py records the phrase file of the chosen language with the configured engine, only what is
+    missing or changed, and removes clips of phrases that are gone (another language)."""
+
+    def setUp(self):
+        import make_fillers
+        self.mf = make_fillers
+        self.config = Path(tempfile.mkdtemp(dir=TMP))
+        engine = self.config / "fake_engine.py"
+        self.said = self.config / "said.txt"
+        engine.write_text(FAKE_RECORDING_ENGINE.replace("sys.argv[1]", repr(str(self.said))), encoding="utf-8")
+        for name, value in {"CONFIG": self.config, "FILLERS_DIR": self.config / "fillers",
+                            "MANIFEST": self.config / "fillers" / "phrases.json",
+                            "ENGINE": engine, "ENGINE_PYTHON": Path(sys.executable)}.items():
+            patcher = mock.patch.object(make_fillers, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        for patcher in (mock.patch.object(make_fillers.language, "CONFIG", self.config),
+                        mock.patch.dict(os.environ, {"PHONECALL_LANGUAGE": ""})):  # the saved choice decides
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.addCleanup(lambda: importlib.reload(__import__("language")))
+
+    def run_it(self, *args):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            self.assertEqual(self.mf.main(list(args)), 0)
+        return out.getvalue()
+
+    def wavs(self):
+        return sorted(str(p.relative_to(self.config / "fillers")) for p in (self.config / "fillers").rglob("*.wav"))
+
+    def test_records_the_chosen_language_and_saves_the_choice(self):
+        self.run_it("--language", "en")
+        english = self.mf.clips(__import__("language").load("en"))
+        self.assertEqual(self.wavs(), sorted([f"{p}.wav" for p in english] + ["wait/chime/soft.wav"]))
+        self.assertEqual((self.config / "language").read_text().strip(), "en")
+        self.assertIn("Uh-huh.", self.said.read_text())
+        for category in ("question", "order", "greeting", "goodbye", "thanks", "other"):
+            self.assertTrue(list((self.config / "fillers" / category).glob("*.wav")), category)
+
+    def test_a_second_run_records_nothing_and_a_changed_phrase_only_that_clip(self):
+        self.run_it("--language", "en")
+        self.said.unlink()
+        self.assertIn("0 to record", self.run_it())
+        self.assertFalse(self.said.exists())
+        manifest = json.loads((self.config / "fillers" / "phrases.json").read_text())
+        manifest["clips"]["nod/mm"] = "Hmm."  # as if the phrase file said something else before
+        (self.config / "fillers" / "phrases.json").write_text(json.dumps(manifest))
+        self.run_it()
+        self.assertEqual(self.said.read_text(), "Mm.\n")
+
+    def test_switching_language_replaces_the_clips(self):
+        self.run_it("--language", "en")
+        self.run_it("--language", "es")
+        spanish = self.mf.clips(__import__("language").load("es"))
+        self.assertEqual(self.wavs(), sorted([f"{p}.wav" for p in spanish] + ["wait/chime/soft.wav"]))
+        self.assertFalse((self.config / "fillers" / "go-on.wav").exists())
+
+    def test_an_unknown_language_stops_before_recording(self):
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.assertEqual(self.mf.main(["--language", "xx"]), 1)
+        self.assertIn("available", err.getvalue())
+        self.assertFalse((self.config / "fillers").exists())
+        self.assertFalse((self.config / "language").exists())
+
+    def test_check_records_nothing(self):
+        out = self.run_it("--language", "es", "--check")
+        self.assertIn("to record", out)
+        self.assertFalse((self.config / "fillers").exists())
+
+
 class FillerTests(unittest.TestCase):
     def test_pick_avoids_repeating_the_last_one(self):
         fillers = [("a", np.zeros(10, dtype=np.int16)), ("b", np.zeros(10, dtype=np.int16))]
@@ -2026,35 +2114,85 @@ class WaitClipTests(unittest.TestCase):
 
 
 class LanguagePackTests(unittest.TestCase):
-    """Every language pack (language.py) carries the same pieces, and its categories are the ones Jev can choose."""
+    """Every phrase file (phrases/<code>.toml) carries the same pieces, and its categories are the ones Jev can choose."""
 
-    def test_every_pack_has_the_same_keys_and_jev_categories(self):
-        import jev
+    def setUp(self):
         import language
-        for code, pack in language.PACKS.items():
-            self.assertEqual(set(pack), set(language.PACKS["en"]), code)
-            self.assertEqual(set(pack["filler_categories"]), set(jev.FILLER_CATEGORIES), code)
+        self.language = language
+        self.folder = Path(tempfile.mkdtemp(dir=TMP))
+        self.addCleanup(lambda: importlib.reload(language))
+
+    def shipped(self):
+        return {p.stem: self.language.load(p.stem) for p in (self.language.REPO / "phrases").glob("*.toml")}
+
+    def test_english_and_spanish_ship_and_load(self):
+        packs = self.shipped()
+        self.assertLessEqual({"en", "es"}, set(packs))
+        for code, pack in packs.items():
+            self.assertEqual(set(pack), set(packs["en"]), code)
             self.assertEqual(set(pack["wait"]), {"question", "order", "other", "more"}, code)
-            self.assertTrue(any(name.startswith("first") for name in pack["waiting"]), code)
-            for group in ("fillers", "nods", "mm", "waiting"):
-                self.assertTrue(all(text.strip() for text in pack[group].values()), (code, group))
+
+    def test_jev_categories_do_not_depend_on_the_language(self):
+        import jev
+        self.assertEqual(set(self.language.FILLER_CATEGORIES), set(jev.FILLER_CATEGORIES))
+        for code, pack in self.shipped().items():
+            self.assertEqual(set(pack["filler_categories"]), set(jev.FILLER_CATEGORIES), code)
+        # What Jev is asked is the same whatever language is configured: jev.py never reads the phrase files.
+        source = Path(jev.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("import language", source)
+        self.assertNotIn("PACK", source)
+
+    def test_a_translation_with_other_categories_is_rejected(self):
+        import tomllib
+        data = tomllib.loads((self.language.REPO / "phrases" / "en.toml").read_text(encoding="utf-8"))
+        data["filler_categories"]["question-ish"] = data["filler_categories"].pop("question")
+        with self.assertRaisesRegex(self.language.PhrasesError, "filler_categories"):
+            self.language.parse(data)
+        data = tomllib.loads((self.language.REPO / "phrases" / "en.toml").read_text(encoding="utf-8"))
+        data["nods"]["../escape"] = "Mm."
+        with self.assertRaisesRegex(self.language.PhrasesError, "clip names"):
+            self.language.parse(data)
+        data = tomllib.loads((self.language.REPO / "phrases" / "en.toml").read_text(encoding="utf-8"))
+        del data["greeting"]
+        with self.assertRaisesRegex(self.language.PhrasesError, "greeting"):
+            self.language.parse(data)
 
     def test_english_words_that_leave_a_sentence_open(self):
-        import language
-        trailing = language.PACKS["en"]["trailing"]
+        trailing = self.language.load("en")["trailing"]
         self.assertTrue({"and", "but", "because", "the"} <= trailing)
         self.assertNotIn("me", trailing)  # "tell me" ends a sentence in English
 
-    def test_the_language_setting_picks_the_pack_and_unknown_ones_fall_back_to_english(self):
-        import importlib
-        import language
-        try:
-            with mock.patch.dict(os.environ, {"PHONECALL_LANGUAGE": "en"}):
-                self.assertEqual(importlib.reload(language).PACK["greeting"], "Yes? I'm listening.")
-            with mock.patch.dict(os.environ, {"PHONECALL_LANGUAGE": "xx"}):
-                self.assertEqual(importlib.reload(language).PACK["whisper"], "en")
-        finally:
-            importlib.reload(language)
+    def test_the_language_comes_from_the_setting_then_the_install_choice_then_english(self):
+        config = self.folder
+        with mock.patch.object(self.language, "CONFIG", config):
+            with mock.patch.dict(os.environ, {"PHONECALL_LANGUAGE": ""}):
+                self.assertEqual(self.language.configured_code(), "en")
+                (config / "language").write_text("es\n")
+                self.assertEqual(self.language.configured_code(), "es")
+            with mock.patch.dict(os.environ, {"PHONECALL_LANGUAGE": "EN"}):
+                self.assertEqual(self.language.configured_code(), "en")
+
+    def test_a_phrase_file_in_the_config_folder_wins_and_adds_languages(self):
+        (self.folder / "phrases").mkdir()
+        english = (self.language.REPO / "phrases" / "en.toml").read_text(encoding="utf-8")
+        (self.folder / "phrases" / "fr.toml").write_text(
+            english.replace('name = "English"', 'name = "French"').replace('greeting = "Yes? I\'m listening."',
+                                                                         'greeting = "Oui ? Je t\'écoute."'),
+            encoding="utf-8")
+        with mock.patch.object(self.language, "CONFIG", self.folder):
+            self.assertIn("fr", self.language.available())
+            self.assertEqual(self.language.load("fr")["greeting"], "Oui ? Je t'écoute.")
+            with self.assertRaises(self.language.PhrasesError):
+                self.language.load("de")
+            self.assertIsNone(self.language.phrases_file("../en"))
+
+    def test_an_unknown_language_falls_back_to_english_at_startup(self):
+        with mock.patch.dict(os.environ, {"PHONECALL_LANGUAGE": "en"}):
+            self.assertEqual(importlib.reload(self.language).PACK["greeting"], "Yes? I'm listening.")
+        with mock.patch.dict(os.environ, {"PHONECALL_LANGUAGE": "xx"}), \
+                mock.patch("sys.stderr", new_callable=io.StringIO):
+            reloaded = importlib.reload(self.language)
+            self.assertEqual((reloaded.LANGUAGE, reloaded.PACK["whisper"]), ("en", "en"))
 
     def test_the_agent_is_told_which_language_to_speak(self):
         self.assertIn("Speak Spanish.", server.INTRO)  # the test conversation is in Spanish (top of this file)

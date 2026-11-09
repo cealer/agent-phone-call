@@ -30,6 +30,9 @@ app/*.iml
 **/*token*
 !**/*token*.dart
 voices/*/*.wav
+# Recorded audio (voice clips, the short phrases make_fillers.py records at install time): never committed
+*.wav
+*.pcm
 voices/*/voice.json
 
 # The voice-activity model does ship (2 MB, the server needs it)

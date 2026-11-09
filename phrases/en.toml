@@ -1,0 +1,91 @@
+# What a call says and listens for in English. One file per language: phrases/<code>.toml.
+# make_fillers.py records every short phrase below with your configured voice (see phrases/README.md);
+# the clips are generated on your Mac at install time and never kept in the repository.
+#
+# Table names are fixed (the server and Jev look them up); the clip names on the left are free
+# ([a-z0-9-], they become file names) and the phrases on the right are yours to change.
+
+name = "English"           # how the agent is told which language to speak back: "Speak English."
+whisper = "en"             # the language code Whisper transcribes (ISO 639-1)
+whisper_prompt = "A phone conversation between a person and their AI assistant: firstmate, secondmate, Tailscale, Herdr, Claude."
+
+# Words a sentence does not end on: when a pause follows one, the user has more to say.
+trailing = ["and", "or", "but", "so", "because", "that", "which", "who", "the", "a", "an", "of", "to",
+            "in", "on", "at", "for", "with", "from", "by", "about", "if", "when", "while", "um", "uh",
+            "like", "my", "your", "our", "their", "is", "are", "was", "i", "we", "it's", "then", "also"]
+
+# Said (synthesized live, not recorded) when the user calls and the contact has no greeting of its own.
+greeting = "Yes? I'm listening."
+agent_unreachable = "I couldn't pass your message to the agent. Check Herdr on the Mac."
+agent_offline = "The agent disconnected. Hanging up."
+hermes_preamble = """This conversation is by voice: answer in English, short and natural, meant to be read aloud, with no markdown and no lists.
+
+"""
+
+# fillers/: generic acknowledgements right after the user stops talking, <= 1.5 s each.
+[fillers]
+mm-okay = "Mm, okay."
+ok = "Okay."
+listening = "Yes, I'm listening."
+go-on = "Go on."
+lets-see = "Mm, let's see."
+
+# fillers/<category>/: with Jev on, the acknowledgement that fits the kind of phrase the user said.
+# The six categories are Jev's (server/jev.py) and the same in every language.
+[filler_categories.question]
+lets-see = "Mm, let's see."
+let-me-check = "Let me check."
+checking = "I'll look."
+
+[filler_categories.order]
+on-it = "Okay, on it."
+got-it = "Got it."
+doing-it = "Right, doing it."
+
+[filler_categories.greeting]
+hi-listening = "Hi, I'm listening."
+hi-here = "Hi! I'm here."
+
+[filler_categories.goodbye]
+bye = "Okay, bye."
+see-you = "Sure, see you."
+
+[filler_categories.thanks]
+welcome = "You're welcome."
+pleasure = "My pleasure."
+
+[filler_categories.other]
+mm-okay = "Mm, okay."
+i-see = "Okay, I see."
+uh-huh = "Uh-huh."
+
+# fillers/nod/: soft nods while the user talks on and on, <= 0.6 s each.
+[nods]
+uh-huh = "Uh-huh."
+mm = "Mm."
+right = "Right."
+yes = "Yes."
+
+# fillers/mm/: with Jev on, the neutral sound played first, before the fitted acknowledgement, <= 0.5 s each.
+[mm]
+mm = "Mm."
+uh-huh = "Uh-huh."
+
+# fillers/wait/<kind>/: «still working» phrases when the answer takes a while, <= 1.5 s each. The first one
+# fits the kind of message (question / order / other, Jev's reading), then up to 3 of "more", then a soft chime.
+[wait.question]
+let-me-check = "Let me check that."
+looking = "I'm looking at it."
+
+[wait.order]
+doing-it = "I'm on it."
+one-moment = "Give me a moment."
+
+[wait.other]
+one-moment = "One moment."
+
+[wait.more]
+still-on-it = "Still on it."
+almost = "Almost."
+a-bit-more = "A bit more."
+nearly-done = "Nearly done."

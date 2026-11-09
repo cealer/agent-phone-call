@@ -20,9 +20,11 @@
     <!-- How the agent prompts name you: "[phonecall] Alex called you on the phone…" -->
     <key>PHONECALL_NAME</key>
     <string>YOUR_NAME</string>
-    <!-- The language you speak on calls: en (default) or es -->
+    <!-- The conversation language comes from ~/.config/phonecall/language (written by install.sh).
+         To override it here:
     <key>PHONECALL_LANGUAGE</key>
-    <string>en</string>
+    <string>es</string>
+    -->
     <!-- Optional: another voice engine (see README, "Use your own model")
     <key>PHONECALL_ENGINE</key>
     <string>/PATH/TO/REPO/server/engine_openai.py</string>

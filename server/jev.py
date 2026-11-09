@@ -7,7 +7,10 @@ Two questions, both a single choice with a confidence:
 Off unless ~/.config/phonecall/jev-on exists (checked on every use, no restart needed).
 The key is read from ~/.config/phonecall/jev-token and goes only in the Authorization header.
 Anything slower than TIMEOUT, below FLOOR, or failing is «no decision» (None): the call goes on as before.
-The criteria carry examples in English and Spanish (the languages of language.py); add yours alongside.
+The categories do not depend on the conversation language: Jev reads what the user said in whatever language and
+picks one of these fixed keys; phrases/<code>.toml only says which recorded clips answer each key (language.py
+checks that every phrase file has exactly these). The criteria carry examples in English and Spanish; examples in
+another language may be added alongside, the keys stay.
 """
 import asyncio
 import logging

@@ -230,7 +230,9 @@ Files in `~/.config/phonecall/` (a file's presence switches a feature on, checke
 | `nod-on` | Soft nods ("uh-huh", "mm") while you talk for a long time (with headphones). `nod-speaker` allows them on speaker too. |
 | `jev-on` + `jev-token` | Turn Jev on (see below) with your own typesafe.ai key. |
 | `local-token` | The Bearer token of the agent API (only with `agent_host`). |
-| `fillers/`, `waiting/`, `greetings/` | Recorded acknowledgements and contact greetings (written by `make_fillers.py` and by the server). |
+| `language` | The conversation language (`en`, `es`, …), written by `install.sh --language`. |
+| `phrases/<code>.toml` | Optional: your own phrase file, used instead of the repository's (see [Language](#language)). |
+| `fillers/`, `greetings/` | Recorded acknowledgements and contact greetings (written by `make_fillers.py`, with `fillers/phrases.json` saying what each clip says, and by the server). |
 | `device.json` | Written by the server when the app registers (the phone's FCM token). |
 
 Environment variables of the server (set them in the launchd plist,
@@ -239,7 +241,7 @@ Environment variables of the server (set them in the launchd plist,
 | Variable | Default | Meaning |
 |---|---|---|
 | `PHONECALL_NAME` | `Your user` | Your name as the agent reads it: `[phonecall] Alex called you on the phone…` |
-| `PHONECALL_LANGUAGE` | `en` | The language you speak on calls: `en` or `es` (see [Language](#language)). |
+| `PHONECALL_LANGUAGE` | the `language` file, else `en` | Overrides the conversation language (see [Language](#language)). |
 | `PHONECALL_CONFIG` | `~/.config/phonecall` | Configuration folder. |
 | `PHONECALL_ENGINE`, `PHONECALL_ENGINE_PYTHON` | `engine.py`, root `.venv` | Swap the voice engine (see below). |
 | `PHONECALL_VOICE` | `voices/my-voice/voice.json` | The TTS voice. |
@@ -256,11 +258,14 @@ The `phonecall` CLI reads `PHONECALL_HOST` / `PHONECALL_TOKEN` / `PHONECALL_PORT
 ## Language
 
 Everything in this repository (code, prompts to the agent, the app) is in English. The conversation
-itself happens in the language you set with `PHONECALL_LANGUAGE`: it tells Whisper what to transcribe,
-which words mean you are not done talking, the default greeting and the short phrases
-`make_fillers.py` records. Two packs ship in [`server/language.py`](server/language.py): `en` (default)
-and `es`. The agent is told which language to speak back. To add another language, copy a pack,
-translate its phrases and re-run `make_fillers.py`; set the voice's `language` in `voice.json` too.
+itself happens in the language you pick at install time (`sh install.sh --language es`; English by
+default). Each language is one file in [`phrases/`](phrases/README.md): what Whisper transcribes, which
+words mean you are not done talking, the greeting, and the short phrases played around the agent's
+answers. `en` and `es` ship. The agent is told which language to speak back.
+
+The short phrases are recorded on your Mac by `make_fillers.py` with your own configured voice when you
+install (no recorded audio is kept in the repository), and recorded again when you switch language or
+edit a phrase. To change a phrase or add a language, see [`phrases/README.md`](phrases/README.md).
 
 ## Speech: STT and TTS
 
@@ -272,7 +277,7 @@ translate its phrases and re-run `make_fillers.py`; set the voice's `language` i
   "Subtitles by…") are dropped.
 - **TTS: Qwen3-TTS 1.7B Base (bf16)** through [mlx-audio](https://github.com/Blaizzy/mlx-audio),
   locally, cloning the voice from a reference clip you provide, streamed in ~1 s chunks, 48 kHz.
-- **Acknowledgement clips** (`make_fillers.py`): short phrases recorded once in the same voice and
+- **Acknowledgement clips** (`make_fillers.py`): short phrases from [`phrases/`](phrases/README.md), recorded at install time in the same voice and
   played instantly ("Mm, okay.", "Let me check.", a soft signal while the agent keeps working), so the
   line is never dead while the agent thinks.
 - **Jev (optional, typesafe.ai, your own key)**: a very fast classifier asked within 0.4 s. As soon as you
@@ -293,10 +298,11 @@ protocol on stdin/stdout, documented at the top of [`server/engine.py`](server/e
 {"id": 3, "op": "tts_stream", "text": "Hello.", "out": "/tmp/z"} -> {"id": 3, "ok": true, "chunk": "/tmp/z.0.pcm"} … {"id": 3, "ok": true, "final": true}
 ```
 
-(STT input: raw 16 kHz mono int16. TTS output: 48 kHz mono 16-bit, WAV or raw chunks.) Three levels of change:
+(STT input: raw 16 kHz mono int16. TTS output: 48 kHz mono 16-bit, WAV or raw chunks.) `make_fillers.py`
+records the short phrases through the same engine, so they always sound like the calls. Three levels of change:
 
 1. **Another MLX Whisper or another cloned voice**: just settings: `PHONECALL_WHISPER`,
-   `PHONECALL_LANGUAGE`, `PHONECALL_VOICE`.
+   `PHONECALL_VOICE` (and the language with `install.sh --language`).
 2. **Any OpenAI-compatible speech API, local or cloud**: use the included
    [`server/engine_openai.py`](server/engine_openai.py) (standard library + ffmpeg):
 
@@ -371,6 +377,7 @@ remote/
   herdr-vps.example              Mac → VPS: run herdr there over a restricted ssh key
   fm-send-vps.example            Mac → VPS: run fm-send there over the same key
   phonecall-ssh-gate             VPS: forced command of that key (only herdr / fm-send)
+phrases/                         one file per conversation language (en.toml, es.toml) + how to add one
 skills/phonecall/SKILL.md        the skill for Claude Code
 voices/
   README.md                      how to make the voice
