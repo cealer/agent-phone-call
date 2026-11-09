@@ -97,7 +97,7 @@ below unless you know MagicDNS works on the phone.
 ## 3. Get the code and install the server
 
 ```sh
-git clone https://github.com/OWNER/agent-phone-call ~/agent-phone-call   # skip if you are already in a clone
+git clone https://github.com/cealer/agent-phone-call ~/agent-phone-call   # skip if you are already in a clone
 cd ~/agent-phone-call
 sh install.sh --language en      # the language you speak on calls: en or es (see phrases/README.md)
 ```
@@ -307,7 +307,7 @@ phonecall status     # you should see "phone_registered": true
 On the Mac, `agent_host` and `local-token` must exist (step 6) and the server restarted. On the VPS:
 
 ```sh
-git clone https://github.com/OWNER/agent-phone-call ~/agent-phone-call && cd ~/agent-phone-call
+git clone https://github.com/cealer/agent-phone-call ~/agent-phone-call && cd ~/agent-phone-call
 sh install.sh --remote        # only the phonecall command (Python 3.10+, no dependencies) and the skill
 echo "MAC_TS_IP" > ~/.config/phonecall/host    # the Mac's Tailscale IP from step 2
 ```
