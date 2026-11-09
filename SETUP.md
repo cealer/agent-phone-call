@@ -102,7 +102,7 @@ cd ~/agent-phone-call
 sh install.sh --language en      # the language you speak on calls: en or es (see phrases/README.md)
 ```
 
-(`OWNER` is the GitHub account that hosts the repository; this guide assumes the clone lives at
+(This guide assumes the clone lives at
 `~/agent-phone-call`. If yours is elsewhere, use its path wherever the guide says `~/agent-phone-call`.)
 
 `install.sh` installs `uv` and `ffmpeg` with Homebrew if missing, creates two Python 3.12 environments
